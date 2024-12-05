@@ -1,28 +1,80 @@
 from typing import Optional
 import pandas as pd
 from pathlib import Path
+from src.utils import get_repo_root
+from src.constants import DateLike
+
+# These columns are clean and suitable for training models on
+CLEAN_COLUMNS = [
+    "season_year",
+    "game_date",
+    "gameId",
+    "matchup",
+    # "teamId",
+    # "teamCity",
+    "teamName",
+    # "teamTricode",
+    "teamSlug",
+    "personId",
+    "personName",
+    # "position",
+    # "comment",
+    # "jerseyNum",
+    "minutes",
+    "fieldGoalsMade",
+    "fieldGoalsAttempted",
+    "fieldGoalsPercentage",
+    "threePointersMade",
+    "threePointersAttempted",
+    "threePointersPercentage",
+    "freeThrowsMade",
+    "freeThrowsAttempted",
+    "freeThrowsPercentage",
+    "reboundsOffensive",
+    "reboundsDefensive",
+    "reboundsTotal",
+    "assists",
+    "steals",
+    "blocks",
+    "turnovers",
+    "foulsPersonal",
+    "points",
+    "plusMinusPoints",
+    "fantasyPoints",
+    "projectedFantasyPoints",
+    "outperformed",
+]
 
 
-fantasy_point_weights = {
-    "points": 1,
-    "reboundsTotal": 1.25,
-    "assists": 1.5,
-    "steals": 2,
-    "blocks": 2,
-    "turnovers": -0.5,
-    "double-double": 1.5,
-    "triple-double": 3,
-}
+def load_clean_scores(seasons: list[str] = None, columns: list[str] = CLEAN_COLUMNS):
+    """
+    Load cleaned regular season box score data.
 
+    Read a Parquet file containing cleaned regular season box scores,
+    selects specified columns, and filters the data by the given seasons.
 
-def get_repo_root():
-    """Find the root of the repository based on the location of the .git directory."""
-    current_dir = Path(__file__).resolve().parent
-    while current_dir != current_dir.root:
-        if (current_dir / ".git").is_dir():  # Check for .git folder
-            return current_dir
-        current_dir = current_dir.parent
-    raise FileNotFoundError("Repository root not found (no .git directory)")
+    Parameters
+    ----------
+        seasons: optional[list[str]]
+            A list of season strings to filter the data. Each season should be in the format "YYYY-YY".
+            Defaults to all seasons if not provided.
+        columns: optional[list[str]]
+            A list of column names to keep from the dataset.
+            Defaults to CLEAN_COLUMNS.
+
+    Return
+    ------
+        pd.DataFrame:
+            A filtered DataFrame containing the specified seasons and columns.
+    """
+
+    data_path = get_repo_root() / "data/processed/regular_season_box_scores.pq"
+    df = pd.read_parquet(data_path, columns=columns)
+
+    if seasons is not None:
+        return df[df["season_year"].isin(seasons)]
+    else:
+        return df
 
 
 def load_and_filter(
@@ -74,52 +126,3 @@ def load_and_filter(
         raise RuntimeError(
             f"An error occurred while loading and filtering the CSV: {e}"
         )
-
-
-def compute_fantasy_points(df):
-    # Base fantasy points (excluding bonuses)
-    base_points = sum(
-        [
-            df[col_name] * weight
-            for col_name, weight in fantasy_point_weights.items()
-            if col_name not in ["double-double", "triple-double"]
-        ]
-    )
-
-    # Count the number of stats >= 10 for double-double/triple-double logic
-    stats = ["points", "reboundsTotal", "assists", "steals", "blocks"]
-    double_digit_count = sum(df[stat] >= 10 for stat in stats)
-
-    # Calculate double-double and triple-double bonuses
-    double_double_bonus = (double_digit_count >= 2) * fantasy_point_weights[
-        "double-double"
-    ]
-    triple_double_bonus = (double_digit_count >= 3) * fantasy_point_weights[
-        "triple-double"
-    ]
-
-    df["fantasyPoints"] = base_points + double_double_bonus + triple_double_bonus
-    return base_points + double_double_bonus + triple_double_bonus
-
-
-def preprocess_box_scores(df: pd.DataFrame):
-    def convert_to_decimal_minutes(value):
-        if pd.isna(value):
-            return 0
-        try:
-            minutes, seconds = map(int, value.split(":"))
-            return minutes + seconds / 60
-        except ValueError:
-            # Handle any unexpected format
-            return 0
-
-    df = df.sort_values(["game_date", "gameId", "personId"])
-
-    # Convert minutes from mm::ss to decimal format
-    df = df.assign(minutes=df["minutes"].apply(convert_to_decimal_minutes))
-    # Compute fantasy points
-    df = df.assign(fantasyPoints=compute_fantasy_points(df))
-
-    return df.reset_index(drop=True)
-
-

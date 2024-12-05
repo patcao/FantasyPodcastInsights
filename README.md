@@ -20,12 +20,10 @@ FantasyPodcastInsights/
 ├── configs/             # Configuration files (e.g., hyperparameters, paths)
 ├── data/                # Raw and processed data
 ├── notebooks/           # Jupyter notebooks for exploration and prototyping
-├── scripts/             # Standalone scripts for data processing and model training
 ├── src/                 # Core source code
-│   ├── models/          # Model definitions and training code
-│   ├── utils/           # Helper functions and utilities
+│   ├── scripts/         # Standalone scripts for data processing and model training
 ├── environment.yaml     # Conda environment definition file
-├── pyproject.toml       # Project configuration and dependencies for reproducibility
+├── pyproject.toml       # Project configuration for reproducibility
 ├── LICENSE              # License information
 ├── README.md            # Project documentation
 ```
@@ -41,3 +39,9 @@ FantasyPodcastInsights/
    conda env create -f environment.yaml
    conda activate FantasyPodcastInsights
    ```
+
+## Cleaning Structured Data
+```
+python -m src.scripts.process_raw_box_scores
+```
+This will clean the box scores in data/raw and create a parquet file at data/processed/regular_season_box_scores.pq
