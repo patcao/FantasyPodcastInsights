@@ -3,6 +3,7 @@ import pandas as pd
 from pathlib import Path
 from src.utils import get_repo_root
 from src.constants import DateLike
+import re
 
 # These columns are clean and suitable for training models on
 CLEAN_COLUMNS = [
@@ -126,3 +127,166 @@ def load_and_filter(
         raise RuntimeError(
             f"An error occurred while loading and filtering the CSV: {e}"
         )
+
+
+class PodcastContainer:
+    """
+    A class for managing podcast data, including file extraction, name normalization,
+    and merging metadata from a manifest.
+    """
+
+    def __init__(self):
+        self.directory_path = get_repo_root() / "data/raw/rotowire_2023_2024"
+
+    @staticmethod
+    def _normalize_string(text: str) -> str:
+        """
+        Normalize a string by removing punctuation, converting to lowercase,
+        and replacing spaces with underscores.
+
+        Parameters
+        ----------
+        text : str
+            The input string to normalize.
+
+        Returns
+        -------
+        str
+            The normalized string.
+        """
+        text = re.sub(r"[^\w\s]", "", text)
+        text = text.lower()
+        return re.sub(r"\s+", "_", text.strip())
+
+    @staticmethod
+    def extract_name_from_path(file_path: Path) -> str:
+        """
+        Extract the meaningful name from a given file path.
+
+        Parameters
+        ----------
+        file_path : Path
+            The file path to process.
+
+        Returns
+        -------
+        str
+            The extracted meaningful name.
+        """
+        filename = file_path.stem
+        # Remove the `_transcript` suffix and clean up underscores
+        filename = re.sub(r"_transcript.*$", "", filename)
+        return filename.replace("_", " ").strip()
+
+    def _list_files(self, suffix: str) -> list[Path]:
+        """
+        List all files in the directory with a specific suffix.
+
+        Parameters
+        ----------
+        suffix : str
+            The file suffix (e.g., 'txt', 'csv') to filter by.
+
+        Returns
+        -------
+        list[Path]
+            A list of Path objects representing the files with the specified suffix.
+        """
+        if not self.directory_path.is_dir():
+            raise ValueError(
+                f"The provided path '{self.directory_path}' is not a directory."
+            )
+        return [
+            file for file in self.directory_path.glob(f"*{suffix}") if file.is_file()
+        ]
+
+    def _manifest_file(self) -> Path:
+        """
+        Retrieve the single manifest file (CSV) in the directory.
+
+        Returns
+        -------
+        Path
+            The path to the manifest file.
+
+        Raises
+        ------
+        AssertionError
+            If there is not exactly one CSV file in the directory.
+        """
+        csv_files = self._list_files("csv")
+        assert (
+            len(csv_files) == 1
+        ), "Expected exactly one manifest file in the directory."
+        return csv_files[0]
+
+    def podcast_files(self) -> list[Path]:
+        """
+        List all podcast transcript files in the directory.
+
+        Returns
+        -------
+        list[Path]
+            A list of Path objects representing the podcast files.
+        """
+        return self._list_files("txt")
+
+    def manifest_data(self) -> pd.DataFrame:
+        """
+        Load the manifest data from the CSV file.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame containing the manifest data.
+        """
+        return pd.read_csv(self._manifest_file())
+
+    def get_podcast_data(self) -> pd.DataFrame:
+        """
+        Combine podcast file data with metadata from the manifest.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame containing combined podcast file and manifest metadata.
+            Columns include:
+            - file_name
+            - file_path
+            - publication_date
+            - duration
+        """
+
+        def read_file_text(file_path: Path) -> str:
+            with file_path.open("r", encoding="utf-8") as f:
+                return f.read()
+
+        # Create a DataFrame for podcast files
+        file_data = pd.DataFrame(
+            [
+                {
+                    "file_path": str(p),
+                    "file_name": self._normalize_string(self.extract_name_from_path(p)),
+                    "content": read_file_text(p),
+                }
+                for p in self.podcast_files()
+            ]
+        )
+
+        # Load and process manifest data
+        mf_data = self.manifest_data()
+        mf_data["title"] = mf_data["title"].apply(self._normalize_string)
+        mf_data = mf_data[["title", "publication_date", "duration"]]
+
+        # Merge file data with manifest metadata
+        result = (
+            pd.merge(
+                file_data, mf_data, left_on="file_name", right_on="title", how="left"
+            )
+            .sort_values(by="publication_date")
+            .reset_index(drop=True)
+        )
+
+        return result[
+            ["publication_date", "file_name", "file_path", "content", "duration"]
+        ]

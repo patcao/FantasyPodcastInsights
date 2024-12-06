@@ -53,7 +53,7 @@ class PlayerUtil:
         ]
         return date_df[["personId", "personName", "teamName"]].drop_duplicates()
 
-    def player_minute_stats(self) -> pd.DataFrame:
+    def player_minute_stats(self, season: Optional[str] = None) -> pd.DataFrame:
         """
         Get aggregated player minute stats for each season.
 
@@ -69,8 +69,12 @@ class PlayerUtil:
             - "games_over_5_minutes"
             - "total_games"
         """
+        result = self.df
+        if season is not None:
+            result = result[result["season_year"] == season]
+
         result = (
-            self.df.groupby(["season_year", "personId", "personName"])
+            result.groupby(["season_year", "personId", "personName"])
             .agg(
                 avg_minutes_per_game=("minutes", "mean"),
                 games_over_5_minutes=("minutes", lambda x: (x > 5).sum()),
