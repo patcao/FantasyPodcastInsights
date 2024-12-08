@@ -135,8 +135,11 @@ class PodcastContainer:
     and merging metadata from a manifest.
     """
 
-    def __init__(self):
-        self.directory_path = get_repo_root() / "data/raw/rotowire_2023_2024"
+    def __init__(self, directory_path: Optional[str] = None):
+        if directory_path is None:
+            self.directory_path = get_repo_root() / "data/raw/DG RFB Transcripts/"
+        else:
+            self.directory_path = Path(directory_path)
 
     @staticmethod
     def _normalize_string(text: str) -> str:
