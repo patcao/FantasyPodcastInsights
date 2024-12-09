@@ -2,6 +2,20 @@ from typing import Optional
 import pandas as pd
 from src.constants import DateLike
 from src.data_utils import load_clean_scores
+import re
+
+
+def normalize_name(name: str) -> str:
+    """
+    Normalizes a name  by converting them to lowercase and removing unnecessary characters or whitespace.
+    """
+    name = name.lower().strip()
+    # Replace multiple spaces with a single space
+    name = re.sub(r"\s+", " ", name)
+    # Keeps letters, numbers, spaces, apostrophes, and hyphens
+    name = re.sub(r"[^\w\s\'\-]", "", name)
+
+    return name
 
 
 class PlayerUtil:
