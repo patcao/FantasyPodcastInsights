@@ -131,15 +131,22 @@ def load_and_filter(
 
 class PodcastContainer:
     """
-    A class for managing podcast data, including file extraction, name normalization,
+    A class for managing a collection of episodes of multiple podcasts.
+
+    Handles operations like file extraction, name normalization,
     and merging metadata from a manifest.
     """
 
-    def __init__(self, directory_path: Optional[str] = None):
-        if directory_path is None:
-            self.directory_path = get_repo_root() / "data/raw/DG RFB Transcripts/"
+    def __init__(self, podcast_directories: Optional[dict[str, str]] = None):
+        if podcast_directories is None:
+            self.podcast_directories = {
+                "rotowire": get_repo_root() / "data/raw/DG RFB Transcripts/",
+                "nbatoday": get_repo_root() / "data/raw/DG FNT Transcripts/",
+            }
         else:
-            self.directory_path = Path(directory_path)
+            self.podcast_directories = {
+                name: Path(directory) for name, directory in podcast_directories.items()
+            }
 
     @staticmethod
     def _normalize_string(text: str) -> str:
@@ -151,11 +158,6 @@ class PodcastContainer:
         ----------
         text : str
             The input string to normalize.
-
-        Returns
-        -------
-        str
-            The normalized string.
         """
         text = re.sub(r"[^\w\s]", "", text)
         text = text.lower()
@@ -181,12 +183,14 @@ class PodcastContainer:
         filename = re.sub(r"_transcript.*$", "", filename)
         return filename.replace("_", " ").strip()
 
-    def _list_files(self, suffix: str) -> list[Path]:
+    def _list_files(self, directory: Path, suffix: str) -> list[Path]:
         """
         List all files in the directory with a specific suffix.
 
         Parameters
         ----------
+        directory : Path
+            The directory to search for files.
         suffix : str
             The file suffix (e.g., 'txt', 'csv') to filter by.
 
@@ -195,17 +199,18 @@ class PodcastContainer:
         list[Path]
             A list of Path objects representing the files with the specified suffix.
         """
-        if not self.directory_path.is_dir():
-            raise ValueError(
-                f"The provided path '{self.directory_path}' is not a directory."
-            )
-        return [
-            file for file in self.directory_path.glob(f"*{suffix}") if file.is_file()
-        ]
+        if not directory.is_dir():
+            raise ValueError(f"The provided path '{directory}' is not a directory.")
+        return [file for file in directory.glob(f"*{suffix}") if file.is_file()]
 
-    def _manifest_file(self) -> Path:
+    def _manifest_file(self, directory: Path) -> Path:
         """
         Retrieve the single manifest file (CSV) in the directory.
+
+        Parameters
+        ----------
+        directory : Path
+            The directory to search for the manifest file.
 
         Returns
         -------
@@ -217,37 +222,95 @@ class PodcastContainer:
         AssertionError
             If there is not exactly one CSV file in the directory.
         """
-        csv_files = self._list_files("csv")
+        csv_files = self._list_files(directory, "csv")
         assert (
             len(csv_files) == 1
         ), "Expected exactly one manifest file in the directory."
         return csv_files[0]
 
-    def podcast_files(self) -> list[Path]:
+    def podcast_files(self, podcast_name: str) -> list[Path]:
         """
-        List all podcast transcript files in the directory.
+        List all podcast transcript files in the directory for a given podcast.
+
+        Parameters
+        ----------
+        podcast_name : str
+            The name of the podcast.
 
         Returns
         -------
         list[Path]
             A list of Path objects representing the podcast files.
         """
-        return self._list_files("txt")
+        if podcast_name not in self.podcast_directories:
+            raise ValueError(f"Podcast '{podcast_name}' not found in the directories.")
+        return self._list_files(self.podcast_directories[podcast_name], "txt")
 
-    def manifest_data(self) -> pd.DataFrame:
+    def manifest_data(self, podcast_name: str) -> pd.DataFrame:
         """
-        Load the manifest data from the CSV file.
+        Load the manifest data from the CSV file for a given podcast.
+
+        Parameters
+        ----------
+        podcast_name : str
+            The name of the podcast.
 
         Returns
         -------
         pd.DataFrame
             A DataFrame containing the manifest data.
         """
-        return pd.read_csv(self._manifest_file())
+        if podcast_name not in self.podcast_directories:
+            raise ValueError(f"Podcast '{podcast_name}' not found in the directories.")
+        return pd.read_csv(self._manifest_file(self.podcast_directories[podcast_name]))
 
-    def get_podcast_data(self) -> pd.DataFrame:
+    def get_all_podcast_names(self) -> list[str]:
+        return list(self.podcast_directories.keys())
+
+    def get_all_episodes(self) -> pd.DataFrame:
+        return (
+            pd.concat(
+                [
+                    self.get_episodes_for_podcast(name).assign(podcast_name=name)
+                    for name in self.get_all_podcast_names()
+                ]
+            )
+            .sort_values("publication_date")
+            .reset_index(drop=True)
+        )
+
+    def get_episodes_for_date(self, for_date: DateLike) -> pd.DataFrame:
         """
-        Combine podcast file data with metadata from the manifest.
+        Get all podcast episodes for a specific date across all podcast directories.
+
+        Parameters
+        ----------
+        for_date : DateLike
+            The date to filter episodes by.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame containing all episodes for the specified date.
+        """
+        for_date = pd.to_datetime(for_date).date()
+        all_episodes = []
+
+        for podcast_name in self.get_all_podcast_names():
+            episodes = self.get_episodes_for_podcast(podcast_name)
+            episodes_for_date = episodes[episodes["publication_date"] == for_date]
+            all_episodes.append(episodes_for_date)
+
+        return pd.concat(all_episodes, ignore_index=True)
+
+    def get_episodes_for_podcast(self, podcast_name: str) -> pd.DataFrame:
+        """
+        Combine podcast file data with metadata from the manifest for a given podcast.
+
+        Parameters
+        ----------
+        podcast_name : str
+            The name of the podcast.
 
         Returns
         -------
@@ -272,12 +335,15 @@ class PodcastContainer:
                     "file_name": self._normalize_string(self.extract_name_from_path(p)),
                     "content": read_file_text(p),
                 }
-                for p in self.podcast_files()
+                for p in self.podcast_files(podcast_name)
             ]
         )
 
         # Load and process manifest data
-        mf_data = self.manifest_data()
+        mf_data = self.manifest_data(podcast_name)
+        mf_data["publication_date"] = pd.to_datetime(
+            mf_data["publication_date"]
+        ).dt.date
         mf_data["title"] = mf_data["title"].apply(self._normalize_string)
         mf_data = mf_data[["title", "publication_date", "duration"]]
 

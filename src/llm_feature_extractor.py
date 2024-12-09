@@ -6,6 +6,14 @@ import numpy as np
 from langchain.chat_models import ChatOpenAI
 import os
 import pickle
+from langchain.prompts import PromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel
+from langchain.chat_models import ChatOpenAI
+from typing import List, Optional
+import pandas as pd
+from src.constants import DateLike
+from src.player_utils import normalize_name
 
 
 class FaissContainer:
@@ -117,7 +125,7 @@ class FaissContainer:
         return [self.text_chunks[i] for i in indices[0]]
 
 
-class PodcastFeatureExtractor:
+class FaissFeatureExtractor:
     def __init__(
         self, podcast_title: str, podcast_text: str, chunk_size=1000, chunk_overlap=200
     ):
@@ -215,7 +223,9 @@ class PodcastFeatureExtractor:
         for player_name, context in all_relevant_chunks:
             combined_prompt += f"Player: {player_name}\nText: {context}\n\n"
 
-        system_prompt = """You are a specialized NBA analyst. Analyze the following text for NBA player mentions and provide a precise, structured analysis.
+        system_prompt = """You are a specialized NBA analyst. 
+        For each NBA player given, context about that player will follow.
+        For context around each player that's given, perform the following analysis.        
 
         Requirements:
         1. Identify all NBA players mentioned (current and former players)
@@ -236,23 +246,77 @@ class PodcastFeatureExtractor:
         response = self.llm.invoke(messages)
         return response
 
-        # Parse the response by splitting it for each player
-        response_text = response.content.strip()
-        summaries = {}
-        for player_name in player_names:
-            # Use player names as markers to extract their summaries
-            marker = f"Summary for {player_name}:"
-            start_idx = response_text.find(marker)
-            if start_idx == -1:
-                summaries[player_name] = "No summary found in the response."
-                continue
-            start_idx += len(marker)
-            end_idx = response_text.find("Summary for", start_idx)
-            summary = (
-                response_text[start_idx:end_idx].strip()
-                if end_idx != -1
-                else response_text[start_idx:].strip()
-            )
-            summaries[player_name] = summary
 
-        return summaries
+class PlayerAnalysis(BaseModel):
+    personName: str
+    mentions: int
+    increased_playing_time: float
+    trending_upwards: float
+
+
+class PlayerAnalysisList(BaseModel):
+    players: List[PlayerAnalysis]
+
+
+class PromptFeatureExtractor:
+    def __init__(self, system_prompt: Optional[str] = None):
+        self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+        # system_prompt = """You are a specialized NBA analyst. Analyze the following text for NBA player mentions, including pronouns and nicknames.
+        # Requirements:
+        # 1. Identify all NBA players active in the 2023 season mentioned. Use their real names in the output.
+        # 3. Count total mentions for each player
+        # 4. Analyze whether a player is likely to see increased playing time in upcoming games
+        # 5. Analyze whether a player is likely to outperform or trending upwards in upcoming games
+        # {format_instructions}
+        # Context:
+        # {podcast_text}
+        # """
+
+        if system_prompt is None:
+            system_prompt = """You are a specialized NBA analyst. Analyze the following text for NBA player mentions, including pronouns and nicknames.
+Requirements:
+1. Identify all NBA players active in the 2023 season mentioned. Use their real names in the output.
+3. Count total mentions for each player
+4. Analyze how likely a player is to see increased playing time in upcoming games. Give a value between 0 and 1, with 1 being definitely seeing increased playing time.
+5. Analyze whether a player is likely to outperform or trending upwards in upcoming games. Give a value between 0 and 1, with 1 being definitely trending upwards.
+
+{format_instructions}
+
+Context:
+{podcast_text}
+"""
+
+        parser = PydanticOutputParser(pydantic_object=PlayerAnalysisList)
+        prompt_template = PromptTemplate(
+            template=system_prompt,
+            input_variables=["podcast_text"],
+            partial_variables={"format_instructions": parser.get_format_instructions()},
+        )
+        self.pipeline = prompt_template | self.llm | parser
+
+    def extract_llm_feats(self, podcast_df) -> pd.DataFrame:
+        # TDOO chunking in half means that player mentions will be duplicated in result dataframe
+
+        df_list = []
+        for row in podcast_df.itertuples():
+            full_text = row.content
+            podcast_date = pd.to_datetime(pd.to_datetime(row.publication_date).date())
+
+            chunk_size = len(full_text) // 2
+            text_chunks = [full_text[:chunk_size], full_text[chunk_size:]]
+
+            struct_players = []
+            for chunk in text_chunks:
+                response = self.pipeline.invoke({"podcast_text": chunk})
+                struct_players.extend(response.players)
+
+            struct_df = pd.DataFrame([player.dict() for player in struct_players])
+            # struct_df = struct_df.groupby('personName').mean().reset_index()
+            struct_df["podcast_date"] = podcast_date
+            struct_df["podcast_name"] = row.podcast_name
+            struct_df["personName"] = struct_df["personName"].apply(normalize_name)
+
+            df_list.append(struct_df)
+
+        return pd.concat(df_list)
