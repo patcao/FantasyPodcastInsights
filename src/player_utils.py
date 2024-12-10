@@ -1,8 +1,10 @@
+import re
 from typing import Optional
+
 import pandas as pd
+
 from src.constants import DateLike
 from src.data_utils import load_clean_scores
-import re
 
 
 def normalize_name(name: str) -> str:
