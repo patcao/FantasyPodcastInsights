@@ -1,9 +1,11 @@
-from typing import Optional
-import pandas as pd
-from pathlib import Path
-from src.utils import get_repo_root
-from src.constants import DateLike
 import re
+from pathlib import Path
+from typing import Optional
+
+import pandas as pd
+
+from src.constants import DateLike
+from src.utils import get_repo_root
 
 # These columns are clean and suitable for training models on
 CLEAN_COLUMNS = [
@@ -342,8 +344,8 @@ class PodcastContainer:
         # Load and process manifest data
         mf_data = self.manifest_data(podcast_name)
         mf_data["publication_date"] = pd.to_datetime(
-            mf_data["publication_date"]
-        ).dt.date
+            pd.to_datetime(mf_data["publication_date"]).dt.date
+        )
         mf_data["title"] = mf_data["title"].apply(self._normalize_string)
         mf_data = mf_data[["title", "publication_date", "duration"]]
 
