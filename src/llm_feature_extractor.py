@@ -33,6 +33,19 @@ Requirements:
 3. Do not include NBA team names, general managers, or any non players.
 4. Use players legal names in the output, but replace any non standard english alphabet letters with the english alphabet.
 
+Following are pairs of common mispellings and the correct legal name of the player:
+dereck lively -> dereck lively ii
+kelly oubre -> kelly oubre jr
+xavier tillman -> xavier tillman sr
+kobe white -> coby white
+jaylen johnson -> jalen johnson
+herb jones -> herbert jones
+kris porzingis -> kristaps porzingis
+deandre hunter -> de'andre hunter
+
+Following are the legal names of select players:
+saddiq bey, victor wembanyama, monte morris, trey murphy iii
+
 {format_instructions}
 
 Context:
@@ -49,7 +62,7 @@ Context:
 
     def extract_all_players(self, text: str) -> list[str]:
         response = self.pipeline.invoke({"text": text})
-        return response.players
+        return [normalize_name(player) for player in response.players]
 
 
 class FaissContainer:
@@ -122,10 +135,7 @@ class FaissContainer:
         player_chunk_mapping = {}
 
         for idx, chunk in enumerate(text_chunks):
-            players = [
-                normalize_name(player)
-                for player in self.player_ner.extract_all_players(chunk)
-            ]
+            players = self.player_ner.extract_all_players(chunk)
             for player in players:
                 if player not in player_chunk_mapping:
                     player_chunk_mapping[player] = []
