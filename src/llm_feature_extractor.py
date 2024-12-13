@@ -1,30 +1,57 @@
 import os
 import pickle
-from typing import List, Optional, Dict
+from pathlib import Path
+from typing import Dict, List, Optional
 
 import faiss
+import jellyfish
 import numpy as np
 import pandas as pd
-from langchain.chat_models import ChatOpenAI
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.llms import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.output_parsers import PydanticOutputParser
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 from tqdm import tqdm
-from pathlib import Path
-from src.constants import DateLike
-from src.player_utils import normalize_name
-from src.utils import get_repo_root, combine_chunks_with_overlap
+
+from src.player_utils import PlayerUtil, normalize_name
+from src.utils import combine_chunks_with_overlap, get_repo_root
 
 
 class PlayerNER:
     class PlayerList(BaseModel):
         players: list[str]
 
-    def __init__(self):
-        self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    NICKNAME_MAP = {
+        "na'shon hylands": ["bones"],
+        "dtephen vurry": ["steph"],
+        "lenron james": ["bron"],
+        "kevin furant": ["kd"],
+        "cameron johnson": ["cam johnson"],
+        "cam thomas": ["cam thomas"],
+        "herbert jones": ["herb jones"],
+    }
+
+    def __init__(self, model: str = "gpt-4o-mini"):
+        if model == "gpt-4o-mini":
+            from langchain_openai import ChatOpenAI
+
+            self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        elif model == "gemini-1.5-flash":
+            from langchain_google_vertexai import ChatVertexAI
+
+            self.llm = ChatVertexAI(model="gemini-1.5-flash", temperature=0)
+        else:
+            raise RuntimeError(f"Model {model} not supported")
+        self.player_util = PlayerUtil()
+        self.all_players = self.player_util.get_all_players()
+        self.all_players = self.all_players.assign(
+            name_metaphone=self.all_players["personName"].apply(
+                lambda name: jellyfish.metaphone(name)
+            )
+        )
+
         system_prompt = """You are a specialized NBA name entity recognizer. Identify all NBA players, correcting any misspellings or nicknames to the correct legal name of the player.
 
 Requirements:
@@ -33,18 +60,21 @@ Requirements:
 3. Do not include NBA team names, general managers, or any non players.
 4. Use players legal names in the output, but replace any non standard english alphabet letters with the english alphabet.
 
-Following are pairs of common mispellings and the correct legal name of the player:
-dereck lively -> dereck lively ii
-kelly oubre -> kelly oubre jr
-xavier tillman -> xavier tillman sr
-kobe white -> coby white
-jaylen johnson -> jalen johnson
-herb jones -> herbert jones
-kris porzingis -> kristaps porzingis
-deandre hunter -> de'andre hunter
+You are given a mapping from the correct name of the player to their nickname to help with disambiguation:
+{{
+    "na'shon hylands": "bones",
+    "dtephen vurry": "steph",
+    "lenron james": "bron",
+    "kevin furant": "kd",
+    "cameron johnson: "cam johnson"
+    "cam thomas": "cam thomas"
+    "herbert jones": "herb jones"
+}}
 
-Following are the legal names of select players:
-saddiq bey, victor wembanyama, monte morris, trey murphy iii
+You should disambiguate player names using in the following order:
+1. Context around the player mention like team names, names of teammates, or other player names.
+2. Metaphone matching of player names to correct for misspellings or partial matches.
+3. Nickname mapping to correct for common nicknames of players.
 
 {format_instructions}
 
@@ -59,6 +89,84 @@ Context:
             partial_variables={"format_instructions": parser.get_format_instructions()},
         )
         self.pipeline = prompt_template | self.llm | parser
+
+    def _correct_player_nicknames(self, players: list[str]) -> list[str]:
+        """Correct player nicknames to the correct legal name of the player."""
+        corrected_player_names = []
+
+        for player in players:
+            for legal_name, nicknames in self.NICKNAME_MAP.items():
+                if player in nicknames:
+                    corrected_player_names.append(legal_name)
+                    break
+            else:
+                corrected_player_names.append(player)
+
+        return corrected_player_names
+
+    def _correct_player_names_metaphone(self, players: list[str]) -> list[str]:
+        """Correct player names based on metaphone matching (e.g., last names or partial matches)."""
+        corrected_player_names = []
+
+        suffixes = ["jr", "sr", "ii", "iii", "iv", "v", "vi", "vii"]
+        players_df = self.all_players.assign(
+            personNameNoSuffix=self.all_players["personName"].apply(
+                lambda name: " ".join(
+                    [word for word in name.split() if word.lower() not in suffixes]
+                )
+            )
+        )
+        players_df = players_df.assign(
+            noSuffixMetaphone=players_df["personNameNoSuffix"].apply(
+                lambda name: jellyfish.metaphone(name)
+            )
+        )
+
+        for player in players:
+            player_metaphone = jellyfish.metaphone(player)
+            player_matches = players_df[
+                (players_df["name_metaphone"] == player_metaphone)
+                | (players_df["noSuffixMetaphone"] == player_metaphone)
+            ]
+
+            if len(player_matches) == 1:
+                player_name = player_matches["personName"].values[0]
+                corrected_player_names.append(player_name)
+            else:
+                corrected_player_names.append(player)
+
+        return corrected_player_names
+
+    def _correct_player_names_prefix(self, players: list[str]) -> list[str]:
+        """Correct player names based on suffix matching (e.g., last names or partial matches).
+
+        Args:
+            players (list[str]): List of player names to correct.
+
+        Returns:
+            list[str]: List of corrected player names.
+        """
+        corrected_player_names = []
+
+        for player in players:
+            player_matches = self.all_players[
+                self.all_players["personName"].str.startswith(player, na=False)
+            ]
+
+            if len(player_matches) == 1:
+                player_name = player_matches["personName"].values[0]
+                corrected_player_names.append(player_name)
+            else:
+                corrected_player_names.append(player)
+
+        return corrected_player_names
+
+    def correct_players(self, players: list[str]) -> list[str]:
+        players = self._correct_player_nicknames(players)
+        players = self._correct_player_names_prefix(players)
+        players = self._correct_player_names_metaphone(players)
+
+        return players
 
     def extract_all_players(self, text: str) -> list[str]:
         response = self.pipeline.invoke({"text": text})
@@ -107,7 +215,7 @@ class FaissContainer:
     def _load_or_compute(self, file_path: Path, compute_fn):
         if file_path.exists():
             if self.DEBUG:
-                print("Loading from disk")
+                print(f"Loading from disk: {file_path.name}")
 
             with open(file_path, "rb") as f:
                 return pickle.load(f)
@@ -136,6 +244,7 @@ class FaissContainer:
 
         for idx, chunk in enumerate(text_chunks):
             players = self.player_ner.extract_all_players(chunk)
+            players = [self.player_ner.correct_players(n) for n in players]
             for player in players:
                 if player not in player_chunk_mapping:
                     player_chunk_mapping[player] = []
@@ -183,8 +292,8 @@ class FaissContainer:
 
 class PlayerAnalysis(BaseModel):
     personName: str
-    # mentions: int
     increased_playing_time: float
+    # mentions: int
     # trending_upwards: float
 
 
@@ -298,47 +407,9 @@ Context:
         result["personName"] = result["personName"].apply(normalize_name)
         return result
 
-    # def _extract_llm_feats_single_episode(
-    #     self, episode_title: str, text: str
-    # ) -> pd.DataFrame:
-    #     # Makes one query per player
-    #     text = text[2 * self.chunk_size :]  # Skip the first 2 chunks
-    #     text_chunks = self.text_splitter.split_text(text)
-
-    #     # Create FAISS index for episode
-    #     index_name = FaissContainer.generate_index_name(
-    #         self, episode_title, self.chunk_size, self.chunk_overlap
-    #     )
-    #     faiss_index = FaissContainer(index_name, text_chunks, self.embeddings_model)
-
-    #     # Get all chunks that contain relevant player context around "Increase or decrease in minutes and playing time"
-    #     player_lst = list(faiss_index.player_chunk_mapping.keys())
-
-    #     faiss_index.player_chunk_mapping
-
-    #     struct_players = []
-    #     for player in player_lst:
-    #         _, chunk_indices = faiss_index.retrieve_relevant_indices(
-    #             player, "Increase or decrease in minutes and playing time"
-    #         )
-
-    #         # Combine the relevant chunks with overlap
-    #         combined_context = [text_chunks[i] for i in sorted(list(chunk_indices))]
-    #         combined_context = combine_chunks_with_overlap(
-    #             combined_context, self.chunk_overlap
-    #         )
-    #         full_text = " ".join(combined_context)
-
-    #         response = self.pipeline.invoke(
-    #             {"podcast_text": full_text, "player_list": [player]}
-    #         )
-    #         struct_players.extend(response.players)
-
-    #     result = pd.DataFrame([player.dict() for player in struct_players])
-    #     result["personName"] = result["personName"].apply(normalize_name)
-    #     return result
-
-    def extract_llm_feats(self, podcast_df: pd.DataFrame) -> pd.DataFrame:
+    def extract_llm_feats(
+        self, podcast_df: pd.DataFrame, aggregate: bool = True
+    ) -> pd.DataFrame:
         df_list = []
         for row in tqdm(podcast_df.itertuples()):
             podcast_name = row.podcast_name
@@ -354,7 +425,22 @@ Context:
 
             df_list.append(single_episode_df)
 
-        return pd.concat(df_list)
+        result = pd.concat(df_list)
+        if aggregate:
+            result = (
+                result.groupby(["podcast_name", "personName", "podcast_date"])
+                .agg(
+                    {
+                        "increased_playing_time": "mean",
+                        # 'mentions': 'sum',
+                        # 'trending_upwards': 'mean'
+                    }
+                )
+                .reset_index()
+                .sort_values(["podcast_date", "personName"])
+            )
+
+        return result
 
 
 class PromptFeatureExtractor:
@@ -418,9 +504,10 @@ Context:
         )
         self.pipeline = prompt_template | self.llm | parser
 
-    def extract_llm_feats(self, podcast_df) -> pd.DataFrame:
+    def extract_llm_feats(
+        self, podcast_df: pd.DataFrame, aggregate: bool = True
+    ) -> pd.DataFrame:
         # TDOO chunking in half means that player mentions will be duplicated in result dataframe
-
         df_list = []
         for row in tqdm(podcast_df.itertuples()):
             full_text = row.content
@@ -442,7 +529,22 @@ Context:
 
             df_list.append(struct_df)
 
-        return pd.concat(df_list)
+        result = pd.concat(df_list)
+        if aggregate:
+            result = (
+                result.groupby(["podcast_name", "personName", "podcast_date"])
+                .agg(
+                    {
+                        "increased_playing_time": "mean",
+                        # 'mentions': 'sum',
+                        # 'trending_upwards': 'mean'
+                    }
+                )
+                .reset_index()
+                .sort_values(["podcast_date", "personName"])
+            )
+
+        return result
 
     # def summarize_player_mentions(self, player_name, top_k=5):
     #     """

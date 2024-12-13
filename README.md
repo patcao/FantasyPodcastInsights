@@ -16,12 +16,9 @@ This project leverages **large language models (LLMs)** to bridge that gap, comb
 
 ```plaintext
 FantasyPodcastInsights/
-├── checkpoints/         # Model weights and checkpoints
-├── configs/             # Configuration files (e.g., hyperparameters, paths)
 ├── data/                # Raw and processed data
 ├── notebooks/           # Jupyter notebooks for exploration and prototyping
 ├── src/                 # Core source code
-│   ├── scripts/         # Standalone scripts for data processing and model training
 ├── environment.yaml     # Conda environment definition file
 ├── pyproject.toml       # Project configuration for reproducibility
 ├── LICENSE              # License information
@@ -34,10 +31,11 @@ FantasyPodcastInsights/
    git clone https://github.com/yourusername/FantasyPodcastInsights.git
    cd FantasyPodcastInsights
    ```
+
 2. **Setup Conda Environment**:
    ```
-   conda env create -f environment.yaml
-   conda activate FantasyPodcastInsights
+   conda env create -f environment.yaml --name py310-fantasy
+   conda activate py310-fantasy
    ```
 
 ## Cleaning Structured Data
@@ -45,3 +43,23 @@ FantasyPodcastInsights/
 python -m src.scripts.process_raw_box_scores
 ```
 This will clean the box scores in data/raw and create a parquet file at data/processed/regular_season_box_scores.pq
+
+## Running the Scraper
+```
+notebooks/transcription-notebooks/NBA-Podcast-Scraper.ipynb
+```
+
+## Running the Transcription Model
+```
+notebooks/GCP-Speech-To-Text-V2-Configuration.ipynb
+```
+
+## Evaluate NER Model
+```
+notebooks/Evaluate-NER.ipynb
+```
+
+## Evaluate LLM Extracted Features
+```
+notebooks/Evaluate-Feature.ipynb
+```

@@ -25,6 +25,21 @@ class PlayerUtil:
         df = load_clean_scores(seasons=seasons)
         self.df = df
 
+    def get_all_players(self) -> pd.DataFrame:
+        """
+        Get a list of all unique players in the dataset.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame containing unique players and their associated team, with columns: "personId", "personName", "teamName".
+        """
+        return (
+            self.df[["personId", "personName", "teamName"]]
+            .groupby(["personId", "personName"], as_index=False)
+            .last()
+        )
+
     def players_for_date(self, date: DateLike) -> pd.DataFrame:
         """
         Get a list of players for an exact date.

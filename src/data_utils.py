@@ -139,6 +139,9 @@ class PodcastContainer:
     and merging metadata from a manifest.
     """
 
+    ROTOWIRE_DIR = get_repo_root() / "data/raw/DG RFB Transcripts/"
+    NBATODAY_DIR = get_repo_root() / "data/raw/DG FNT Transcripts/"
+
     def __init__(self, podcast_directories: Optional[dict[str, str]] = None):
         if podcast_directories is None:
             self.podcast_directories = {
