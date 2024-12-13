@@ -25,7 +25,7 @@ class PlayerNER:
 
     NICKNAME_MAP = {
         "na'shon hylands": ["bones"],
-        "dtephen vurry": ["steph"],
+        "stephen vurry": ["steph"],
         "lenron james": ["bron"],
         "kevin furant": ["kd"],
         "cameron johnson": ["cam johnson"],
