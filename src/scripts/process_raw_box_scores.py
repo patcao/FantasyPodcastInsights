@@ -4,6 +4,7 @@ import re
 import pandas as pd
 
 from src.data_utils import load_and_filter
+import numpy as np
 
 INPUT_DIRECTORY = "data/raw"
 OUTPUT_DIRECTORY = "data/processed"
@@ -103,7 +104,34 @@ def main():
         .apply(lambda x: x.rolling(window=5, min_periods=1).mean().shift(1))
         .reset_index(level=0, drop=True)
     )
-    df = df.assign(outperformed=df["fantasyPoints"] > df["projectedFantasyPoints"])
+    df = df.assign(
+        outperformed=df["fantasyPoints"] > df["projectedFantasyPoints"],
+        outperformed_5=df["fantasyPoints"] - df["projectedFantasyPoints"] > 5,
+        outperformed_10=df["fantasyPoints"] - df["projectedFantasyPoints"] > 10,
+    )
+
+    df = df.assign(
+        outperform_next=df.groupby("personId")["outperformed"].shift(-1),
+        outperform_next_5=df.groupby("personId")["outperformed_5"].shift(-1),
+        outperform_next_10=df.groupby("personId")["outperformed_10"].shift(-1),
+    )
+    df["injured"] = np.where(~df.comment.isnull(), 1, 0)
+    df["injured_next"] = df.groupby("personId")["injured"].shift(-1)
+
+    df = df.dropna(
+        subset=[
+            "outperform_next",
+            "outperform_next_5",
+            "outperform_next_10",
+            "injured_next",
+        ]
+    )
+
+    df = df.assign(
+        outperformed=df["outperformed"].astype(int),
+        outperform_next=df["outperform_next"].astype(int),
+    )
+
     df = df.reset_index(drop=True)
 
     df["personName"] = df["personName"].apply(normalize_name)

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+import numpy as np
 
 from src.constants import DateLike
 from src.utils import get_repo_root
@@ -21,7 +22,7 @@ CLEAN_COLUMNS = [
     "personId",
     "personName",
     # "position",
-    # "comment",
+    "comment",
     # "jerseyNum",
     "minutes",
     "fieldGoalsMade",
@@ -46,6 +47,11 @@ CLEAN_COLUMNS = [
     "fantasyPoints",
     "projectedFantasyPoints",
     "outperformed",
+    "outperform_next",
+    "outperform_next_5",
+    "outperform_next_10",
+    "injured_next",
+    "injured",
 ]
 
 
@@ -73,6 +79,9 @@ def load_clean_scores(seasons: list[str] = None, columns: list[str] = CLEAN_COLU
 
     data_path = get_repo_root() / "data/processed/regular_season_box_scores.pq"
     df = pd.read_parquet(data_path, columns=columns)
+    df["fantasyDiff"] = df["fantasyPoints"] - df["projectedFantasyPoints"]
+
+    df = df.drop(columns="comment")
 
     if seasons is not None:
         return df[df["season_year"].isin(seasons)]
@@ -129,6 +138,37 @@ def load_and_filter(
         raise RuntimeError(
             f"An error occurred while loading and filtering the CSV: {e}"
         )
+
+
+def add_lagged_features(df: pd.DataFrame, feature_names: list[str], max_lag: int):
+    assign_map = {}
+
+    for target_col in feature_names:
+        for i in range(1, max_lag + 1):
+            assign_map[f"{target_col}_lag_{i}"] = df.groupby("personId")[
+                target_col
+            ].shift(i)
+
+    return df.assign(**assign_map), list(assign_map.keys())
+
+
+def create_training_dataset(
+    scores: pd.DataFrame,
+    non_lag_features: str,
+    lag_features: str,
+    target_col: str,
+    diff_threshold: float = 0,
+):
+    df, lagged_feat_names = add_lagged_features(scores, lag_features, 5)
+    df = df.assign(outperformed=np.where(df["fantasyDiff"] > diff_threshold, 1, 0))
+    df.dropna(inplace=True)
+
+    return {
+        "df": df,
+        "non_lag_features": non_lag_features,
+        "lagged_feat_names": lagged_feat_names,
+        "target_col": target_col,
+    }
 
 
 class PodcastContainer:

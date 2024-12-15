@@ -8,6 +8,13 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score, roc_curve
 
 from src.constants import DateLike
+from sklearn.metrics import (
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+    accuracy_score,
+)
 
 
 def get_repo_root():
@@ -54,7 +61,7 @@ def combine_chunks_with_overlap(chunks: list[str], overlap_length: int):
     return combined_chunks
 
 
-def compute_auc_roc(true_labels, predicted_labels) -> float:
+def compute_auc_roc(true_labels, predicted_labels) -> None:
     fpr, tpr, thresholds = roc_curve(true_labels, predicted_labels)
 
     # Compute AUC
@@ -72,7 +79,81 @@ def compute_auc_roc(true_labels, predicted_labels) -> float:
     plt.grid()
     plt.show()
 
-    return auc
+
+def evaluate_prediction(y_true, y_probs, y_preds, display=True):
+    """
+    Evaluate classification predictions and pretty-print the results.
+    Includes accuracy, AUC, F1 score, precision, recall, and a confusion matrix.
+
+    Parameters:
+    - y_true: Ground truth labels
+    - y_probs: Predicted probabilities for the positive class
+    - y_preds: Predicted binary labels
+    - display: Whether to pretty-print the results (default=True)
+
+    Returns:
+    - results: A dictionary containing all metrics and the confusion matrix
+    """
+    results = {}
+
+    # Accuracy
+    results["accuracy"] = accuracy_score(y_true, y_preds)
+
+    # AUC
+    results["roc_auc"] = roc_auc_score(y_true, y_probs)
+
+    # F1 Score
+    results["f1"] = f1_score(y_true, y_preds)
+
+    # Precision and Recall
+    results["precision"] = precision_score(y_true, y_preds)
+    results["recall"] = recall_score(y_true, y_preds)
+
+    # Confusion Matrix
+    # TN, FP
+    # FN, TP
+    conf_matrix = confusion_matrix(y_true, y_preds)
+    # conf_matrix_percent_total = np.round(conf_matrix / conf_matrix.sum(), 4) * 100
+    conf_matrix_percent_column = (
+        np.round(conf_matrix / conf_matrix.sum(axis=0, keepdims=True), 4) * 100
+    )
+
+    tn, fp, fn, tp = conf_matrix.ravel()  # Unpack confusion matrix elements
+
+    # True Negative Rate (Specificity)
+    tnr = tn / (tn + fp)
+    results["tnr"] = tnr
+
+    results["conf_matrix"] = conf_matrix
+    results["conf_matrix_percent_column"] = conf_matrix_percent_column
+
+    # Pretty-print results if display is True
+    if display:
+        print("\nEvaluation Metrics")
+        print("-" * 40)
+        print(f"Accuracy: {results['accuracy']:.3f}")
+        print(f"AUC (ROC): {results['roc_auc']:.3f}")
+        print(f"F1 Score: {results['f1']:.3f}")
+        print(f"Precision: {results['precision']:.3f}, Recall: {results['recall']:.3f}")
+
+        print("row_auc, accuracy, precision, recall, tnr")
+        print(
+            f"{results['roc_auc']:.3f}, {results['accuracy']:.3f}, {results['precision']:.3f}, {results['recall']:.3f}, {results['tnr']:.3f}"
+        )
+
+        print("\nConfusion Matrix:")
+        print("TN, FP")
+        print("FN, TP")
+
+        print("\nConfusion Matrix (Counts):")
+        print(conf_matrix)
+
+        print("\nConfusion Matrix (Percent of Column):")
+        print(conf_matrix_percent_column)
+
+        print("-" * 40)
+
+    return results
 
 
 def get_nba_season(date: DateLike) -> str:
