@@ -38,6 +38,9 @@ FantasyPodcastInsights/
    conda activate py310-fantasy
    ```
 
+4. Environment variables at Python runtime are managed by the python-dotenv package.
+Add your API keys to a .env file in the root directory of this project.
+
 3. **Ruff and Isort**:
 This project using ruff formatter 
 ```
@@ -83,3 +86,13 @@ This notebook is used to evaluate LLM extracted features with the LSTM Classifie
 ```
 notebooks/Evaluate-LSTM.ipynb
 ```
+
+## Troubleshooting
+
+### Running on a CPU-only Machine
+If you are running this on a **CPU-only machine**, remove the following dependencies from your `environment.yml` file:
+
+```yaml
+dependencies:
+  - cudatoolkit
+  - pytorch-cuda
