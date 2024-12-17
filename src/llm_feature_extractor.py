@@ -63,9 +63,9 @@ Requirements:
 You are given a mapping from the correct name of the player to their nickname to help with disambiguation:
 {{
     "na'shon hylands": "bones",
-    "dtephen vurry": "steph",
-    "lenron james": "bron",
-    "kevin furant": "kd",
+    "stephen curry": "steph",
+    "lebron james": "bron",
+    "kevin durant": "kd",
     "cameron johnson: "cam johnson"
     "cam thomas": "cam thomas"
     "herbert jones": "herb jones"
@@ -447,17 +447,6 @@ class PromptFeatureExtractor:
     def __init__(self, system_prompt: Optional[str] = None):
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-        # system_prompt = """You are a specialized NBA analyst. Analyze the following text for NBA player mentions, including pronouns and nicknames.
-        # Requirements:
-        # 1. Identify all NBA players active in the 2023 season mentioned. Use their real names in the output.
-        # 3. Count total mentions for each player
-        # 4. Analyze whether a player is likely to see increased playing time in upcoming games
-        # 5. Analyze whether a player is likely to outperform or trending upwards in upcoming games
-        # {format_instructions}
-        # Context:
-        # {podcast_text}
-        # """
-
         if system_prompt is None:
             system_prompt = """You are a specialized NBA analyst. Analyze the following text for NBA player mentions, including pronouns and nicknames.
 Requirements:
@@ -545,97 +534,3 @@ Context:
             )
 
         return result
-
-    # def summarize_player_mentions(self, player_name, top_k=5):
-    #     """
-    #     Summarize mentions of a specific player from the podcast text.
-
-    #     Args:
-    #         player_name (str): The player's name to search for.
-    #         top_k (int): Number of relevant chunks to retrieve.
-
-    #     Returns:
-    #         str: Summary of discussions about the player.
-    #     """
-    #     query = f"Find all mentions and context about {player_name}."
-
-    #     relevant_chunks = self.index.retrieve_relevant_chunks(query, top_k=top_k)
-    #     if not relevant_chunks:
-    #         return f"No mentions of {player_name} were found in the podcast."
-
-    #     # Summarize the retrieved chunks using GPT
-    #     context = "\n\n".join(relevant_chunks)
-    #     prompt = (
-    #         f"Summarize the discussions about {player_name} based on the following text:\n\n{context}\n\n"
-    #         f"Provide a concise summary only about {player_name}. If a {player_name} is not mentioned, return 'Is not mentioned in the provided text'"
-    #     )
-
-    #     # TODO whether a player will see more or less playtime in the following game
-    #     # TODO whether a player will be injured or not in the following game
-    #     prompt = (
-    #         f"Evaluate the injury risk of {player_name} based on the following text:\n\n{context}\n\n"
-    #         f"On a scale of 1-10 where 10 is most likely to be out the next game, and 1 is likely to play, 5 is neutral. If a {player_name} is not mentioned, return None"
-    #     )
-
-    #     messages = [
-    #         {
-    #             "role": "system",
-    #             "content": "You are a helpful assistant that summarizes discussions about NBA basketball palyers. ",
-    #         },
-    #         {"role": "user", "content": prompt},
-    #     ]
-    #     response = self.llm.invoke(prompt)
-    #     return response.content
-
-    # def summarize_player_mentions_batch(self, player_names, top_k=5):
-    #     """
-    #     Summarize mentions of multiple players in a single batch.
-
-    #     Args:
-    #         player_names (list[str]): List of player names to search for.
-    #         top_k (int): Number of relevant chunks to retrieve for each player.
-
-    #     Returns:
-    #         dict: Player name as the key and their corresponding summary as the value.
-    #     """
-    #     # Retrieve relevant chunks for all players
-    #     all_relevant_chunks = []
-    #     for player_name in player_names:
-    #         query = f"Find all mentions and context about {player_name}."
-    #         relevant_chunks = self._retrieve_relevant_chunks(query, top_k=top_k)
-    #         if not relevant_chunks:
-    #             all_relevant_chunks.append(
-    #                 (player_name, f"No mentions of {player_name} were found")
-    #             )
-    #         else:
-    #             context = "\n\n".join(relevant_chunks)
-    #             all_relevant_chunks.append((player_name, context))
-
-    #     # Combine all player prompts into a single user message
-    #     # combined_prompt = "Summarize the discussions about the following NBA players based on the provided text.'\n\n"
-    #     combined_prompt = ""
-    #     for player_name, context in all_relevant_chunks:
-    #         combined_prompt += f"Player: {player_name}\nText: {context}\n\n"
-
-    #     system_prompt = """You are a specialized NBA analyst.
-    #     For each NBA player given, context about that player will follow.
-    #     For context around each player that's given, perform the following analysis.
-
-    #     Requirements:
-    #     1. Identify all NBA players mentioned (current and former players)
-    #     3. Count total mentions for each player
-    #     4. Analyze whether a player is likely to see increased playing time in upcoming games
-    #     4. Analyze whether a player is likely to outperform or trending upwards in upcoming games
-
-    #     Give the output as a CSV with header.
-    #     """
-    #     # Create a messages list with separate entries for each player
-    #     messages = [
-    #         # {"role": "system", "content": "You are a helpful assistant that summarizes discussions about NBA basketball palyers. If a person is not mentioned, return 'Is not mentioned in the provided text'"},
-    #         {"role": "system", "content": system_prompt},
-    #         {"role": "user", "content": combined_prompt},
-    #     ]
-
-    #     # Call the LLM once for the entire batch
-    #     response = self.llm.invoke(messages)
-    #     return response

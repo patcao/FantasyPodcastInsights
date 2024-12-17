@@ -5,16 +5,17 @@ from typing import Optional, TypeAlias, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score, roc_curve
-
-from src.constants import DateLike
 from sklearn.metrics import (
+    accuracy_score,
     confusion_matrix,
     f1_score,
     precision_score,
     recall_score,
-    accuracy_score,
+    roc_auc_score,
+    roc_curve,
 )
+
+from src.constants import DateLike
 
 
 def get_repo_root():

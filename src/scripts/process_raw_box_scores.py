@@ -1,10 +1,10 @@
 import os
 import re
 
+import numpy as np
 import pandas as pd
 
 from src.data_utils import load_and_filter
-import numpy as np
 
 INPUT_DIRECTORY = "data/raw"
 OUTPUT_DIRECTORY = "data/processed"
@@ -117,6 +117,11 @@ def main():
     )
     df["injured"] = np.where(~df.comment.isnull(), 1, 0)
     df["injured_next"] = df.groupby("personId")["injured"].shift(-1)
+    df["weighted_injured"] = (
+        0.95 * df["injured"]
+        + 0.07 * df["injured_next"]
+        + np.random.normal(0, 0.05, size=len(df))
+    )
 
     df = df.dropna(
         subset=[

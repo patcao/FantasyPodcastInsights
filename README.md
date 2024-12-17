@@ -38,6 +38,16 @@ FantasyPodcastInsights/
    conda activate py310-fantasy
    ```
 
+3. **Ruff and Isort**:
+This project using ruff formatter 
+```
+ruff format src/
+```
+and isort:
+```
+isort src/
+```
+
 ## Cleaning Structured Data
 ```
 python -m src.scripts.process_raw_box_scores
@@ -45,21 +55,31 @@ python -m src.scripts.process_raw_box_scores
 This will clean the box scores in data/raw and create a parquet file at data/processed/regular_season_box_scores.pq
 
 ## Running the Scraper
+This notebook scrapes RSS feeds for new podcasts and downloads them.
 ```
 notebooks/transcription-notebooks/NBA-Podcast-Scraper.ipynb
 ```
 
 ## Running the Transcription Model
+This notebook takes mp3 files and transcribes them into text and storing the output
+in the data/raw directory.
 ```
 notebooks/GCP-Speech-To-Text-V2-Configuration.ipynb
 ```
 
 ## Evaluate NER Model
+This noteobok, shows our evaluation of the NER portion of the pipeline.
 ```
 notebooks/Evaluate-NER.ipynb
 ```
 
 ## Evaluate LLM Extracted Features
+This notebook is used to evaluate LLM extracted features with the XGBoost Classifier
 ```
-notebooks/Evaluate-Feature.ipynb
+notebooks/Evaluate-XGBoost.ipynb
+```
+
+This notebook is used to evaluate LLM extracted features with the LSTM Classifier
+```
+notebooks/Evaluate-LSTM.ipynb
 ```

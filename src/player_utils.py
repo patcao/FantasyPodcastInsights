@@ -109,6 +109,7 @@ class PlayerUtil:
             .agg(
                 avg_minutes_per_game=("minutes", "mean"),
                 games_over_5_minutes=("minutes", lambda x: (x > 5).sum()),
+                games_over_10_minutes=("minutes", lambda x: (x > 10).sum()),
                 total_games=("gameId", "nunique"),
             )
             .reset_index()
