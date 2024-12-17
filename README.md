@@ -38,10 +38,13 @@ FantasyPodcastInsights/
    conda activate py310-fantasy
    ```
 
-4. Environment variables at Python runtime are managed by the python-dotenv package.
+4. **API Keys**:
+
+Environment variables at Python runtime are managed by the python-dotenv package.
 Add your API keys to a .env file in the root directory of this project.
 
 3. **Ruff and Isort**:
+
 This project using ruff formatter 
 ```
 ruff format src/
