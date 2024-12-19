@@ -70,7 +70,7 @@ notebooks/transcription-notebooks/NBA-Podcast-Scraper.ipynb
 This notebook takes mp3 files and transcribes them into text and storing the output
 in the data/raw directory.
 ```
-notebooks/GCP-Speech-To-Text-V2-Configuration.ipynb
+notebooks/transcription-notebooks/Deepgram Transcription Script Demo.ipynb
 ```
 
 ## Evaluate NER Model
